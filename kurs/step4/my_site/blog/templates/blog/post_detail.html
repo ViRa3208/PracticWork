@@ -1,0 +1,145 @@
+{% extends "blog/base.html" %}
+{% block content %}
+  <article class="media content-section">
+    <img class="rounded-circle article-img" src="{{ object.author.profile.image.url }}">
+    <div class="media-body">
+      <div class="article-metadata">
+        <a class="mr-2" href="{% url 'user-posts' object.author.username %}">{{ object.author }}</a>
+        <small class="text-muted">{{ object.date_posted|date:"F d, Y" }}</small>
+        {% if object.author == user %}
+          <div>
+            <a class="btn btn-secondary btn-sm mt-1 mb-1" href="{% url 'post-update' object.id %}">Редактировать</a>
+            <a class="btn btn-danger btn-sm mt-1 mb-1" href="{% url 'post-delete' object.id %}">Удалить</a>
+          </div>
+        {% endif %}
+      </div>
+      <h2 class="article-title">{{ object.title }}</h2>
+
+      <!-- Блок рейтинга -->
+      <div class="rating-section mb-3">
+        <div class="d-flex align-items-center">
+          <span class="mr-2">Рейтинг:</span>
+          <div class="star-rating" data-post-id="{{ object.id }}">
+            {% for i in "12345" %}
+              <span class="star {% if object.user_rating >= i|add:'0' %}filled{% endif %}"
+                    data-value="{{ i }}">★</span>
+            {% endfor %}
+          </div>
+          <span class="badge badge-light ml-2">
+            {{ object.average_rating|floatformat:1 }} ({{ object.ratings.count }} оценок)
+          </span>
+        </div>
+      </div>
+
+      <p class="article-content">{{ object.content }}</p>
+    </div>
+  </article>
+
+  <!-- Секция комментариев -->
+  <div class="content-section">
+    <h3>Комментарии ({{ post.comments.count }})</h3>
+
+    {% for comment in post.comments.all %}
+        <div class="comment mb-3 p-2 border rounded">
+            <div class="d-flex justify-content-between">
+                <strong>{{ comment.author.username }}</strong>
+                <small class="text-muted">{{ comment.created_date|date:"d.m.Y H:i" }}</small>
+            </div>
+            <p class="mt-2">{{ comment.text }}</p>
+        </div>
+    {% empty %}
+        <p class="text-muted">Пока нет комментариев. Будьте первым!</p>
+    {% endfor %}
+
+    {% if user.is_authenticated %}
+        <h4 class="mt-4">Добавить комментарий:</h4>
+        <form method="POST" action="{% url 'add-comment' post.id %}">
+            {% csrf_token %}
+            <div class="form-group">
+                <textarea class="form-control" name="text" rows="3" required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Отправить</button>
+        </form>
+    {% else %}
+        <div class="alert alert-info mt-3">
+            <a href="{% url 'login' %}?next={{ request.path }}">Войдите</a>, чтобы оставить комментарий.
+        </div>
+    {% endif %}
+</div>
+
+  <!-- Стили для рейтинга и комментариев -->
+  <style>
+    .star-rating {
+      display: inline-block;
+      font-size: 24px;
+      line-height: 1;
+    }
+    .star {
+      color: #ddd;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .star.filled {
+      color: gold;
+    }
+    .star:hover {
+      color: gold;
+    }
+    .comment {
+      border-left: 3px solid #eee;
+      padding-left: 15px;
+    }
+    .comment-img {
+      margin-right: 8px;
+    }
+  </style>
+
+  <!-- Скрипт для обработки рейтинга -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const starRatings = document.querySelectorAll('.star-rating');
+
+      starRatings.forEach(ratingContainer => {
+        const stars = ratingContainer.querySelectorAll('.star');
+        const postId = ratingContainer.dataset.postId;
+
+        stars.forEach(star => {
+          star.addEventListener('click', async function() {
+            if (!{{ user.is_authenticated|yesno:"true,false" }}) {
+              window.location.href = "{% url 'login' %}?next={{ request.path }}";
+              return;
+            }
+
+            const value = this.dataset.value;
+            try {
+              const response = await fetch("{% url 'rate-post' %}", {
+                method: 'POST',
+                headers: {
+                  'X-CSRFToken': '{{ csrf_token }}',
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `post_id=${postId}&value=${value}`
+              });
+
+              const data = await response.json();
+              if (data.success) {
+                // Обновление звезд
+                stars.forEach((s, idx) => {
+                  s.classList.toggle('filled', idx < value);
+                });
+
+                // Обновление бейджа
+                const badge = ratingContainer.nextElementSibling;
+                if (badge) {
+                  badge.textContent = `${data.average_rating.toFixed(1)} (${data.total_ratings} оценок)`;
+                }
+              }
+            } catch (error) {
+              console.error('Ошибка:', error);
+            }
+          });
+        });
+      });
+    });
+  </script>
+{% endblock content %}
